@@ -10,7 +10,7 @@
 - MariaDB 연동 (`192.168.0.39`)
 - API 인증 전략(JWT / API Key / Basic) 선택 적용
 - Keycloak + Okta(IdP) 기반 UI 인증 연동
-- Okta / Saviynt 외부 API 연동 확장 구조
+- 외부 REST API 동적 어댑터 구조 (Provider 코드 변경 없이 확장 가능)
 - Prometheus / Grafana / SonarQube / CircleCI 통합
 
 ## 현재 확정된 운영 전제

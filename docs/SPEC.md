@@ -53,9 +53,13 @@
 
 ## 4) 외부 연동 요구사항
 
-- Okta, Saviynt 외부 API 연동 필요
-- Provider 추가가 쉬운 어댑터(플러그인) 구조 지향
-- 공통 HTTP 정책(타임아웃/재시도/에러 매핑/추적 ID) 적용
+외부 REST API를 유연하게 관리하고 호출할 수 있는 동적 어댑터 구조를 목표로 한다.
+
+- Provider 등록/설정(Base URL, 인증 방식, 헤더 등)을 런타임에 주입 가능한 구조
+- Provider별 인증 방식(API Key, OAuth2 Client Credentials, Basic 등)을 선택 적용
+- 신규 Provider 추가 시 핵심 서비스 코드 변경 없이 어댑터 구현만으로 확장 가능
+- 공통 HTTP 정책(타임아웃/재시도/에러 매핑/추적 ID) 모든 Provider에 일괄 적용
+- Provider 설정 및 자격증명은 Vault를 통해 주입
 
 ## 5) 비기능 요구사항
 
