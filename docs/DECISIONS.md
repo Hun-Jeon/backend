@@ -74,3 +74,25 @@
 - Status: Accepted
 - Decision: 초기 역할은 `user` / `admin` 2단계로 분리, Keycloak Realm Role로 관리
 - Reason: 단순한 구조로 시작해 필요 시 확장, Keycloak에서 역할 중앙 관리로 백엔드 코드 변경 최소화
+
+## D-012: 프론트엔드 독립적 백엔드 API 설계
+
+- Status: Accepted
+- Decision: 백엔드는 순수 REST API만 제공하며 특정 프론트엔드에 종속되지 않는다. Service A(자체 개발 React 앱)와 Service B(기존 사내 서비스) 중 어느 쪽이 붙더라도 백엔드 변경 없이 동작해야 한다.
+- Reason: PoC 단계에서 Service A로 개발하되, 리더십 의사결정 이후 Service B로 전환하거나 병행 운영할 수 있어야 함. Service A는 dev 환경에서 팀 내 PoC 용도로 유지.
+- Detail:
+  - Service A (브라우저): Keycloak OIDC 인증 → httpOnly Cookie 방식
+  - Service B (서버-서버): Vault 공유 서명키 기반 JWT 방식
+  - 백엔드는 두 방식을 모두 수용, 클라이언트 전환 시 백엔드 무변경
+
+## D-013: 다중 JWT 발급자(Multi-issuer) 인증 전략
+
+- Status: Accepted
+- Decision: JWT `iss`(issuer) 클레임 기준으로 인증 검증기를 분기한다. Keycloak 발급 토큰은 Keycloak JWKS로 검증, Service B 발급 토큰은 Vault에 저장된 공유 서명키로 검증한다.
+- Reason: 두 클라이언트의 인증 체계가 다르지만 백엔드 코드를 분기 없이 단일 Security 필터 체인으로 처리하기 위함
+- Detail:
+  - `JwtIssuerAuthenticationManagerResolver`로 `iss` 클레임 기준 라우팅
+  - Keycloak issuer → Spring OAuth2 Resource Server (JWKS URI)
+  - Service B issuer → Vault 공유 서명키(HMAC or RSA)로 검증
+  - 공유 서명키는 Vault KV에서 런타임 주입, 키 교체 시 코드 변경 없음
+  - 두 토큰 모두 최종적으로 `user` / `admin` 역할로 매핑

@@ -2,11 +2,12 @@
 
 ## 상위 구성
 
-- Frontend: React + TypeScript + Vite, OIDC 로그인 처리, Backend API 호출
-- Backend: Spring Boot 3.5, 비즈니스 API, 인증 정책 처리, 외부 플랫폼 연동
-- Keycloak: UI 인증의 표준 IdP 브로커 (Okta 페더레이션 포함)
+- Service A (Frontend): React + TypeScript + Vite, 자체 개발 UI. PoC 및 팀 내 검증 용도로 dev 환경 상시 유지
+- Service B (External): 사내 기존 서비스. 리더십 결정에 따라 프로덕션 프론트엔드로 전환 가능
+- Backend: Spring Boot 3.5, 순수 REST API. Service A/B 어느 쪽이든 무변경으로 대응
+- Keycloak: Service A 인증의 표준 IdP 브로커 (Okta 페더레이션 포함)
 - Okta: Keycloak 연동 대상 외부 IdP
-- Vault: 런타임 시크릿 소스 (KV v2, AppRole 인증)
+- Vault: 런타임 시크릿 소스 (KV v2, AppRole 인증). Service B와의 JWT 공유 서명키 저장소 역할도 담당
 - MariaDB: 애플리케이션 데이터 저장소
 - Prometheus/Grafana: 메트릭 수집 및 시각화
 - SonarQube: 정적 분석/품질 게이트
@@ -29,26 +30,44 @@
 
 dev 환경에서는 Vite의 `/api` proxy를 통해 CORS 없이 백엔드와 통신한다.
 
-## 인증 흐름
+## 클라이언트 유형별 인증 전략
 
-### UI 인증 흐름 (httpOnly Cookie + OIDC)
+백엔드는 `JwtIssuerAuthenticationManagerResolver`를 통해 JWT `iss` 클레임 기준으로 검증기를 분기한다.
 
-1. 사용자 → Frontend 접속
-2. Frontend → Keycloak OIDC 로그인 리다이렉트
+```
+JWT 수신
+  ├─ iss = Keycloak  →  Keycloak JWKS URI로 검증  (Service A)
+  └─ iss = Service B →  Vault 공유 서명키로 검증   (Service B)
+              ↓
+       user / admin 역할 매핑 → 인가 처리
+```
+
+### Service A 인증 흐름 (브라우저, httpOnly Cookie + OIDC)
+
+1. 사용자 → Service A(React) 접속
+2. Service A → Keycloak OIDC 로그인 리다이렉트
 3. Keycloak → Okta(IdP) 페더레이션 인증
 4. 인증 완료 → Backend `POST /api/auth/session` 호출 → httpOnly Cookie 발급
-5. Frontend → 이후 API 호출 시 Cookie 자동 첨부
-6. Backend `JwtCookieFilter`: Cookie → `Authorization: Bearer` 변환 → JWT 검증
+5. Service A → 이후 API 호출 시 Cookie 자동 첨부
+6. Backend `JwtCookieFilter`: Cookie → `Authorization: Bearer` 변환 → Keycloak JWKS로 검증
 
-### 로그아웃 흐름
+### Service A 로그아웃
 
-1. Frontend → Backend `DELETE /api/auth/session` 호출
+1. Service A → Backend `DELETE /api/auth/session` 호출
 2. Backend → Cookie 즉시 만료 처리
 
-### API 인증 흐름
+### Service B 인증 흐름 (서버-서버, Vault 공유 서명키 JWT)
 
-- 엔드포인트별 정책으로 JWT / API Key / Basic 중 선택 적용
-- 인증 성공 시 Keycloak Realm Role(`user` / `admin`) 기반 인가 처리
+1. Service B → Vault에서 공유 서명키 조회
+2. Service B → 서명키로 JWT 생성 후 Backend 호출 (`Authorization: Bearer`)
+3. Backend → Vault에서 동일 서명키 조회 → JWT 검증
+4. 검증 성공 → 클레임 기반 역할 매핑 → 인가 처리
+
+> 공유 서명키는 Vault KV에 저장되며, 키 교체 시 코드 변경 없이 Vault에서만 갱신
+
+### API 인가 흐름
+
+- 인증 성공 후 `user` / `admin` 역할 기반 인가 처리 (두 클라이언트 공통)
 - 인증/인가 실패는 표준 에러 응답 반환
 
 ## 인가(Authorization)

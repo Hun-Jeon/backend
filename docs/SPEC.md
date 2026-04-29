@@ -27,7 +27,14 @@
 
 ## 3) 인증/보안 요구사항
 
-### UI 인증
+백엔드는 두 가지 클라이언트 유형을 동시에 지원한다.
+
+| 클라이언트 | 방식 | 인증 수단 |
+|-----------|------|-----------|
+| Service A (브라우저) | OIDC | Keycloak JWT (httpOnly Cookie) |
+| Service B (서버-서버) | 공유 서명키 | Vault에 저장된 서명키로 직접 JWT 생성 |
+
+### Service A 인증 (브라우저)
 
 - Keycloak OIDC 기반 로그인 (Keycloak → Okta 페더레이션)
 - 인증 방식: httpOnly Cookie + JWT (Stateless)
@@ -35,7 +42,14 @@
   - 이후 요청마다 Cookie → `Authorization: Bearer` 변환 처리 (JwtCookieFilter)
 - 로그인/로그아웃/보호 라우트 가드 동작 필요
 
-### API 인증
+### Service B 인증 (서버-서버)
+
+- Service B가 Vault에서 공유 서명키를 조회하여 JWT 직접 생성
+- Backend도 Vault에서 동일 서명키를 조회하여 JWT 검증
+- `JwtIssuerAuthenticationManagerResolver`로 `iss` 클레임 기준 검증기 분기
+- 키 교체는 Vault에서만 처리, 코드 변경 없음
+
+### 공통 API 인증
 
 - JWT, API Key, Basic 인증을 선택적으로 적용 가능해야 함
 - 엔드포인트 단위로 인증 정책을 지정할 수 있어야 함
@@ -43,7 +57,7 @@
 
 ### 인가
 
-- Keycloak Realm Role 기준 `user` / `admin` 2단계 분리
+- Service A / Service B 모두 최종적으로 `user` / `admin` 역할로 매핑
 - JWT claim으로 역할 전달, Backend에서 엔드포인트별 인가 처리
 
 ### 시크릿 관리
