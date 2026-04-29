@@ -4,28 +4,28 @@
 
 ## 0. 사전 확인
 
-- [ ] 로컬 도구 버전 확인 (Java 17, Docker, kubectl, gh CLI)
+- [x] 로컬 도구 버전 확인 (Java 17, Docker, kubectl, gh CLI)
 - [ ] Synology NAS 내 의존 서비스 상태 확인 (Vault, Keycloak, MariaDB)
 - [ ] GitHub 프로젝트/마일스톤/이슈 접근 확인
 
-## 1. M1 우선 진행
+## 1. M1 완료
 
-- [ ] `#1` Backend bootstrap
-- [ ] `#2` Frontend scaffold
-- [ ] `#3` dev/prod config convention
-
-완료 조건:
-- [ ] WSL/Mac 모두에서 기동 문서 기준 실행 가능
-- [ ] `dev/prod` 설정 분리 확인
+- [x] `#1` Backend bootstrap
+- [x] `#2` Frontend scaffold
+- [x] `#3` dev/prod config convention
 
 ## 2. M2 진행
 
 - [ ] `#4` MariaDB + migration baseline
-- [ ] `#5` Vault secret integration
+- [x] `#5` Vault secret integration
 
 완료 조건:
-- [ ] Vault 기반 DB 연결 성공
+- [x] Vault 기반 DB 연결 성공
 - [ ] 초기 스키마 자동 마이그레이션 성공
+
+### M2 다음 작업
+
+- [ ] `#4` Flyway 또는 Liquibase로 초기 스키마 마이그레이션 구성
 
 ## 3. M3 진행
 
@@ -47,10 +47,15 @@
 
 ## 5. 다음 세션 시작 명령
 
-아래 순서로 시작:
+```bash
+# NAS 서비스 상태 확인 후
+./gradlew bootRun   # dev 프로파일 자동 적용 (direnv)
+```
 
-1. `gh issue view 1 --repo Hun-Jeon/backend`
-2. `gh issue view 2 --repo Hun-Jeon/backend`
-3. `gh issue view 3 --repo Hun-Jeon/backend`
-4. M1 범위 코드 작업 착수
+## 환경 설정 참고
 
+- Java 17 (Temurin): `/Library/Java/JavaVirtualMachines/temurin-17.jdk`
+- 로컬 dev 환경변수: `.envrc` (direnv, gitignore됨)
+  - `VAULT_ROLE_ID`, `VAULT_SECRET_ID`, `SPRING_PROFILES_ACTIVE=dev`
+- Vault: `https://vault.hjeon.i234.me` / KV v2 / AppRole 인증
+- DB: `jdbc:mysql://192.168.0.39:33306/backend` (username/password는 Vault 주입)

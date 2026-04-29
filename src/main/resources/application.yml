@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: backend
+  cloud:
+    vault:
+      uri: https://vault.hjeon.i234.me
+      fail-fast: true
+      kv:
+        enabled: true
+        backend: kv
