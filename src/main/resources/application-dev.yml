@@ -1,0 +1,14 @@
+spring:
+  cloud:
+    vault:
+      authentication: APPROLE
+      app-role:
+        role-id: ${VAULT_ROLE_ID}
+        secret-id: ${VAULT_SECRET_ID}
+  config:
+    import: "vault://kv/backend/dev/db"
+  datasource:
+    url: jdbc:mysql://192.168.0.39:33306/backend
+    username: ${db.username}
+    password: ${db.password}
+    driver-class-name: com.mysql.cj.jdbc.Driver
