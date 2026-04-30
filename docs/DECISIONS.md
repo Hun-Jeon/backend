@@ -145,3 +145,79 @@
   - `connector_config` 테이블: name, connector_type, base_url, auth_type, vault_secret_path, timeout_ms, retry_count, enabled
   - 인증정보는 DB 저장 금지. vault_secret_path만 저장하고 Vault에서 런타임 조회 (D-004 일관성 유지)
   - 공통 HTTP 정책(Timeout/Retry/ErrorMapping/TraceId)은 WebClient 빌더 레벨에서 일괄 적용
+
+## D-018: 데이터 모델 네이밍 컨벤션 (PK / FK)
+
+- Status: Accepted
+- Decision: PK 컬럼명은 항상 `id` (BIGINT AUTO_INCREMENT). FK 컬럼명은 항상 `<참조테이블>_id`. JOIN 작성 시 테이블 별칭(alias) 사용을 의무화한다.
+- Reason: JPA / Spring Data / Hibernate 디폴트와 일치해 BaseEntity 상속이 단순. 단일 테이블 쿼리에서 짧고 자연스러움. 도구·OSS·생태계 호환성 우수. 운영 환경 실습 목적상 업계 표준을 따르는 학습 가치가 큼.
+- Detail:
+  - PK: `id BIGINT AUTO_INCREMENT PRIMARY KEY`
+  - FK: 참조하는 테이블명을 그대로 컬럼명에 사용 (예: `provisioning_request.connector_config_id`)
+  - JOIN: `JOIN provisioning_request pr ON pr.connector_config_id = cc.id` 형태. `USING` 절은 사용하지 않음
+  - 별칭 컨벤션은 `docs/DATA_MODEL.md`에 명시
+
+## D-019: BaseEntity (`@MappedSuperclass`) 패턴 도입
+
+- Status: Accepted
+- Decision: 모든 엔티티의 공통 필드(`id`, `createdAt`, `updatedAt`)는 `@MappedSuperclass`로 추출한다. INSERT만 있는 테이블(`audit_log`)은 `createdAt`만 갖는 부모 클래스를 별도로 둔다.
+- Reason: DRY 원칙, 일관성, 향후 audit 컬럼이나 soft-delete 추가 시 단일 지점 변경.
+- Detail:
+  - `BaseEntity`: `id` + `createdAt` + `updatedAt` (Spring Data JPA Auditing 기반)
+  - `CreatedAtEntity`: `id` + `createdAt`만 (audit_log 등 immutable insert-only 테이블용)
+  - 적용 시 `@EnableJpaAuditing` 활성화 필요
+  - PK 컬럼명은 D-018에 따라 `id`로 통일되어 별도 `@AttributeOverride` 불필요
+
+## D-020: 시간 컬럼 — TIMESTAMP + UTC 컨벤션
+
+- Status: Accepted
+- Decision: 모든 시간 컬럼은 `TIMESTAMP` 타입을 사용하고, JDBC 연결과 Hibernate에 UTC 컨벤션을 강제한다.
+- Reason: 운영 환경 실습 목적. 멀티 머신(Windows Desktop / Macbook / Synology NAS) 환경에서 timezone 변환 버그를 회피하려면 저장은 UTC로 정규화하는 표준 운영 패턴이 적합.
+- Detail:
+  - JDBC URL: `jdbc:mysql://...?serverTimezone=UTC&useLegacyDatetimeCode=false`
+  - Hibernate: `spring.jpa.properties.hibernate.jdbc.time_zone=UTC`
+  - 앱 코드: `Instant` 또는 UTC `LocalDateTime` 사용
+  - 표시 시점에만 사용자 timezone으로 변환 (프론트엔드 책임)
+
+## D-021: JSON 컬럼 타입 채택
+
+- Status: Accepted
+- Decision: 구조화된 비정형 데이터(`provisioning_request.payload`, `audit_log.metadata`)는 MariaDB `JSON` 타입을 사용한다. (`TEXT`가 아님)
+- Reason: DB 레벨에서 JSON 형식 검증(`JSON_VALID`) 자동 적용으로 무결성 확보. 디버깅 시 `JSON_EXTRACT` 사용 가능. 향후 generated column + index로 확장 가능. JSON 타입은 내부적으로 LONGTEXT 저장이라 일반 문자열 추출에도 제약 없음. SQL Server / SQLite 등으로 이식 시에는 컬럼 타입 1줄만 변경하면 되므로 이식 비용은 낮음.
+- Detail:
+  - DDL: `metadata JSON NULL`, `payload JSON NULL`
+  - JPA 매핑: `@Column(columnDefinition = "JSON") private String payload;` (Java는 그냥 String)
+  - 직렬화/역직렬화는 애플리케이션(Jackson)에서 담당
+
+## D-022: Flyway 마이그레이션 전략 — 단일 소스, 단계 분리
+
+- Status: Accepted
+- Decision: 모든 DB 스키마 변경은 Flyway가 단일 진실 공급원. Spring Batch 메타테이블도 Flyway로 관리하며, `spring.batch.jdbc.initialize-schema=NEVER`로 자동 생성을 비활성화한다. 한 마이그레이션 = 한 책임 원칙.
+- Reason: 운영 일관성, PR 리뷰 용이성, 롤백 지점 명확화.
+- Detail:
+  - V1: `connector_config` (M2 #4)
+  - V2: `audit_log` (M2 #4 · D-023)
+  - V3: Spring Batch 메타테이블 (M2 #4) — `spring-batch-core/org/springframework/batch/core/schema-mariadb.sql`을 그대로 복사
+  - V4: `provisioning_request` + `connector_health_log` (M4)
+  - 의존성: `org.flywaydb:flyway-core` + `flyway-mysql`
+  - Liquibase는 채택하지 않음
+
+## D-023: `audit_log` Early Adoption
+
+- Status: Accepted
+- Decision: `audit_log` 테이블을 M2 #4 시점에 V2로 도입한다 (기능 도메인 작업 이전).
+- Reason: 처음부터 감사 로그를 누적해 향후 디버깅·운영 패턴 분석 기회 확보. 늦게 도입할수록 누락된 이력 구간이 생겨 감사 가치 저하.
+- Detail:
+  - 컬럼: `actor`, `actor_type` (USER/SERVICE_B), `action`, `target_type`, `target_id`, `result`, `metadata` (JSON), `trace_id`, `created_at`
+  - INSERT-only. UPDATE/DELETE 금지 (운영 정책)
+  - 보존 정책: 1년 후 archive (M5 운영 런북에서 정의)
+
+## D-024: `connector_health_log` 상태 변화 시점만 기록
+
+- Status: Accepted
+- Decision: `connector_health_log`는 모든 헬스체크 결과가 아닌 **status가 직전과 다를 때**만 INSERT한다.
+- Reason: 저장량 절감(주기적 체크 대비 1/100 수준). 실질 정보량(상태 전이)은 그대로 유지. 현재 상태 조회는 최신 1건 SELECT로 해결 가능.
+- Detail:
+  - 구현: 새 헬스체크 직전 마지막 status를 조회해 비교 후 INSERT 여부 결정
+  - 현재 상태 쿼리 패턴은 `docs/DATA_MODEL.md` 3.4 절 참고
+  - FK 정책: `ON DELETE CASCADE` (커넥터 삭제 시 이력도 정리)
