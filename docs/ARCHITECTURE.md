@@ -2,12 +2,11 @@
 
 ## 상위 구성
 
-- Service A (Frontend): React + TypeScript + Vite, 자체 개발 UI. PoC 및 팀 내 검증 용도로 dev 환경 상시 유지
-- Service B (External): 사내 기존 서비스. 리더십 결정에 따라 프로덕션 프론트엔드로 전환 가능
-- Backend: Spring Boot 3.5, 순수 REST API. Service A/B 어느 쪽이든 무변경으로 대응
+- Service A (Frontend): React + TypeScript + Vite
+- Backend: Spring Boot 3.5, 순수 REST API.
 - Keycloak: Service A 인증의 표준 IdP 브로커 (Okta 페더레이션 포함)
 - Okta: Keycloak 연동 대상 외부 IdP
-- Vault: 런타임 시크릿 소스 (KV v2, AppRole 인증). Service B와의 JWT 공유 서명키 저장소 역할도 담당
+- Vault: 런타임 시크릿 소스 (KV v2, AppRole 인증).
 - MariaDB: 애플리케이션 데이터 저장소
 - Redis: 외부 API 응답 공유 캐시 (멀티 파드 환경에서 파드 간 캐시 일관성 보장)
 - Prometheus/Grafana: 메트릭 수집 및 시각화
@@ -50,12 +49,10 @@ Frontend, Backend, Redis는 각각 별도 Deployment/StatefulSet으로 운영한
 ```
 JWT 수신
   ├─ iss = Keycloak  →  Keycloak JWKS URI로 검증  (Service A)
-  └─ iss = Service B →  Vault 공유 서명키로 검증   (Service B)
-              ↓
-       user / admin 역할 매핑 → 인가 처리
+  └─ iss = 미정
 ```
 
-### Service A 인증 흐름 (브라우저, httpOnly Cookie + OIDC)
+### 인증 흐름 (브라우저, httpOnly Cookie + OIDC)
 
 1. 사용자 → Service A(React) 접속
 2. Service A → Keycloak OIDC 로그인 리다이렉트
@@ -64,19 +61,10 @@ JWT 수신
 5. Service A → 이후 API 호출 시 Cookie 자동 첨부
 6. Backend `JwtCookieFilter`: Cookie → `Authorization: Bearer` 변환 → Keycloak JWKS로 검증
 
-### Service A 로그아웃
+### 로그아웃
 
 1. Service A → Backend `DELETE /api/auth/session` 호출
 2. Backend → Cookie 즉시 만료 처리
-
-### Service B 인증 흐름 (서버-서버, Vault 공유 서명키 JWT)
-
-1. Service B → Vault에서 공유 서명키 조회
-2. Service B → 서명키로 JWT 생성 후 Backend 호출 (`Authorization: Bearer`)
-3. Backend → Vault에서 동일 서명키 조회 → JWT 검증
-4. 검증 성공 → 클레임 기반 역할 매핑 → 인가 처리
-
-> 공유 서명키는 Vault KV에 저장되며, 키 교체 시 코드 변경 없이 Vault에서만 갱신
 
 ### CORS 관리
 
